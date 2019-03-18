@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="utf-8">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<head>
+     <title>空战游戏1.19  19.3.18 18:42 by:逆火狂飙 horn19782016@163.com</title>
+	 
+	 <style>
+	 *{
+		margin:1px;
+		padding:1px;
+	 }
+	 #canvas{
+		background:#ffffff;
+	 }
+	 
+	 #controls{
+		float:left;
+	 }
+	 </style>
+	 
+    </head>
+
+    <body onload="init()">
+		<table border="0px">
+			<tr>
+				<td width="50px"valign="top">
+					<div id="controls">
+						<input id='animateBtn' type='button' value='开始'/>
+						<input id='restartBtn' type='button' value='再来一盘'/>
+					</div>
+				</td>
+				<td width="100%" align="center">
+					<canvas id="canvas" width="1200px" height="562px" >
+		            出现文字表示你的浏览器不支持HTML5
+					</canvas>
+				</td>
+			</tr>
+		</table>
+     </body>
+</html>
+<script type="text/javascript">
+<!--
+var paused=true;
+animateBtn.onclick=function(e){
+	paused=! paused;
+	
+	if(paused){
+		animateBtn.value="开始";
+		
+	}else{	
+		animateBtn.value="暂停";
+		window.requestAnimationFrame(animate); 
+	}
+}
+
+restartBtn.onclick=function(e){
+	init();
+}
+
+var ctx;			// 绘图环境
+var bg;				// 背景
+var lastTime=0;		// 上次时间，用以计算FPS
+var fps=0;			// Frame per second
+var myPlane;		// 己方飞机
+var myShellMng;		// 己方子弹管理类
+var enemyPlaneMng;	// 敌方飞机管理者
+var explosionMng;	// 爆炸管理者
+var enemyShellMng;  // 敌方子弹管理类
+var bonusMng;		// 奖励管理类（只对本机有效）
+var shootDownCnt;	// 击落数量
+var gameover=false;	// 是否游戏结束
+
+// 初始化,被onload调用
+function init(){
+	restartBtn.style.visibility="hidden";
+	shootDownCnt=0;
+	gameover=false;	
+	
+	// 创建背景对象
+	bg=new Background();
+	
+	// 初始化CTX
+	var canvas=document.getElementById('canvas');
+	canvas.width=bg.width*6;
+	canvas.height=bg.height*4;
+	ctx=canvas.getContext('2d');
+	
+	// +new Date=new Date().getTime();
+	lastTime=+new Date;
+	
+	// 创建本机对象
+	myPlane=new MyPlane(ctx.canvas.width/2,canvas.height-100);
+	
+	// 本机子弹管理者
+	myShellMng=new MyShellMng();
+	
+	// 敌机管理者
+	enemyPlaneMng=new EnemyPlaneMng();
+	
+	// 爆炸管理者
+	explosionMng=new ExplosionMng();
+	
+	// 敌方子弹管理者
+	enemyShellMng=new EnemyShellMng();
+	
+	// 奖励管理类
+	bonusMng=new BonusMng();
+	
+	// 响应键盘按下事件
+    canvas.addEventListener('keydown', doKeyDown, true);
+    window.addEventListener('keydown', doKeyDown, true);
+	
+	// 响应键盘弹起事件
+	canvas.addEventListener('keyup', doKeyUp, true);
+    window.addEventListener('keyup', doKeyUp, true);
+	
+	canvas.focus();  
+};
+
+//------------------------------------
+// 响应键盘按下事件
+//------------------------------------
+function doKeyDown(e) {
+    var keyID = e.keyCode ? e.keyCode :e.which;
+	
+    if(keyID === 38 || keyID === 87)  { // up arrow and W
+		myPlane.toUp=true;
+        e.preventDefault();
+    }
+	if(keyID === 40 || keyID === 83)  { // down arrow and S
+		myPlane.toDown=true;
+        e.preventDefault();
+    }
+	
+    if(keyID === 39 || keyID === 68)  { // right arrow and D
+		myPlane.toRight=true;
+        e.preventDefault();
+    }
+    
+    if(keyID === 37 || keyID === 65)  { // left arrow and A
+		myPlane.toLeft=true;
+        e.preventDefault();
+    }
+	
+	if(keyID === 32 )  { // SpaceBar
+		//  按下和弹起必须成对出现，否则画面会僵
+		myPlane.shoot();
+        e.preventDefault();
+    }
+}
+
+//------------------------------------
+// 响应键盘弹起事件
+//------------------------------------
+function doKeyUp(e) {
+    var keyID = e.keyCode ? e.keyCode :e.which;
+	
+    if(keyID === 38 || keyID === 87)  { // up arrow and W
+		myPlane.toUp=false;
+        e.preventDefault();
+    }
+	if(keyID === 40 || keyID === 83)  { // down arrow and S
+		myPlane.toDown=false;
+        e.preventDefault();
+    }
+	
+    if(keyID === 39 || keyID === 68)  { // right arrow and D
+		myPlane.toRight=false;
+        e.preventDefault();
+    }
+    
+    if(keyID === 37 || keyID === 65)  { // left arrow and A
+		myPlane.toLeft=false;
+        e.preventDefault();
+    }
+	
+	if(keyID === 32 )  { // SpaceBar
+		// 按下和弹起必须成对出现，否则画面会僵
+        e.preventDefault();
+    }
+}
+
+// 更新各对象状态
+function update(){
+	// 本机移动
+	myPlane.move();
+	
+	// 本方炮弹移动
+	myShellMng.move();
+	
+	// 判断敌机和本机是否相撞
+	enemyPlaneMng.isCrashed(myPlane);
+	
+	// 敌机移动
+	enemyPlaneMng.move();
+	
+	// 判断本方子弹是否与敌机相撞
+	myShellMng.probeCrashedEnemyPlane();
+	
+	// 补充敌机
+	enemyPlaneMng.reload();
+	
+	// 移动敌方子弹
+	enemyShellMng.move();
+	
+	// 判断敌方子弹是否与本机相撞
+	enemyShellMng.probeCrashedMyPlane();
+	
+	// 移动奖励
+	bonusMng.move();
+	bonusMng.isCrashed(myPlane);
+}
+
+// 取得测试文本
+function getTestString(){
+	var str="";
+	
+	str+="本方炮弹:"+myShellMng.getCount()+" ";
+	str+="敌机数:"+enemyPlaneMng.getCount()+" ";
+	str+="敌方炮弹:"+enemyShellMng.getCount()+" ";
+	str+="奖励数:"+bonusMng.getCount()+" ";
+	str+="爆炸数:"+explosionMng.getCount()+" ";
+	
+	return str;
+}
+
+// 在CTX画出各个对象
+function draw(){
+	// 清屏
+	ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+	
+	// 画背景
+	fps=calculateFps(new Date);	
+	bg.setOffset(fps);
+	bg.paint(ctx);
+	//var bgImg=bg.getImage();
+	//ctx.drawImage(bgImg,0,bg.height-bg.Offset,bg.width,bg.Offset,0,0,ctx.canvas.width,4*bg.Offset);
+	//ctx.drawImage(bgImg,0,0,bg.width,bg.height-bg.Offset,0,4*bg.Offset,canvas.width,canvas.height-4*bg.Offset);
+	
+	
+	
+	// 画己方子弹
+	myShellMng.paint(ctx);
+	
+	// 画己方飞机
+	myPlane.paint(ctx);
+	
+	// 画敌方子弹
+	enemyShellMng.paint(ctx);
+	
+	// 画敌机
+	enemyPlaneMng.paint(ctx);
+	
+	// 画爆炸
+	explosionMng.paint(ctx);
+	
+	
+	
+	// 画奖励
+	bonusMng.paint(ctx);
+	
+	// 显示击落数
+	ctx.font="bold 16px 宋体";
+    ctx.fillStyle='white';
+    ctx.fillText("ShootDown:"+shootDownCnt,20,30);
+	
+	// 显示测试文本
+	//ctx.fillText(getTestString(),20,50);
+	
+	// 游戏结束
+	if(gameover){
+		ctx.font="bold 64px 宋体";
+		ctx.strokeStyle='white';
+		ctx.strokeText("Game over",ctx.canvas.width/2-138,ctx.canvas.height/2);
+	}
+}
+
+// 计算FPS
+function calculateFps(now){
+	var retval=1000/(now-lastTime);
+	lastTime=now;
+	return retval;
+}
+
+// 播放
+function animate(){
+	if(!paused){
+		update();
+		draw();
+		window.requestAnimationFrame(animate);
+	}	
+}
+
+//  常规函数:角度得到弧度
+function getRad(degree){
+    return degree/180*Math.PI;
+}
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>点类定义开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+Point=function(x,y){
+    this.x=x;
+    this.y=y;
+}
+Point.prototype={
+    x:0,            // 横坐标
+    y:0,            // 纵坐标
+}
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<点类定义结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>背景类定义开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+Background=function(){
+    this.width=104;
+	this.height=156;
+	this.files=['bgBlue.jpg','bgRiver.jpg','bgSky.jpg','bgVolcano.jpg'];
+	this.Offset=0;
+	this.velocity=40;
+}
+Background.prototype={
+    width:104,            	// 背景图片原始宽度
+    height:156,            	// 背景图片原始高度
+	files:[],            	// 图片数组
+	Offset:0,            	// 偏移值
+	velocity:40,            // 背景移动速度
+	loopValue:0,			// 循环累加值,用来确定时哪一张图片
+	
+	// 取得四张图片里面一张
+	getImage:function(){
+		this.loopValue++;
+		if(this.loopValue>=3999){
+			this.loopValue=0;
+		}
+		
+		var index=Math.floor(this.loopValue/1000);
+		var img=new Image();
+		img.src=this.files[index];
+		return img;
+	},
+	
+	// 设置偏移值，为移动背景做准备
+	setOffset:function(fps){
+		this.Offset=this.Offset<this.height?this.Offset+this.velocity/fps:0;
+	},
+	
+	// 画背景
+	paint:function(ctx){
+		var bgImg=this.getImage();
+		ctx.drawImage(bgImg,0,this.height-this.Offset,this.width,this.Offset,0,0,ctx.canvas.width,4*this.Offset);
+		ctx.drawImage(bgImg,0,0,this.width,this.height-this.Offset,0,4*this.Offset,canvas.width,canvas.height-4*this.Offset);
+	},
+}
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<背景类定义结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>我方战机类定义开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+MyPlane=function(x,y){
+    Point.apply(this,arguments);
+	this.types=[
+		{width:56,height:41, file:'m0.png',shellCount:1,shellSpeed:4,},
+		{width:56,height:41, file:'m1.png',shellCount:2,shellSpeed:4.5,},
+		{width:80,height:54, file:'m2.png',shellCount:3,shellSpeed:5,},
+		{width:109,height:83,file:'m3.png',shellCount:4,shellSpeed:5.5,},
+		{width:109,height:81,file:'m4.png',shellCount:5,shellSpeed:6,},
+		{width:109,height:91,file:'m5.png',shellCount:6,shellSpeed:6.5,},
+		{width:117,height:80,file:'m6.png',shellCount:7,shellSpeed:7,},
+		{width:117,height:82,file:'m7.png',shellCount:8,shellSpeed:7.5,},
+		{width:117,height:99,file:'m8.png',shellCount:9,shellSpeed:8,},
+	];
+}
+
+MyPlane.prototype={
+	types:[],           // 存储图片的数组
+	step:4,				// 每次移动多远
+	toLeft:false,		// 是否向左移动
+	toRight:false,		// 是否向右移动
+	toUp:false,			// 是否向上移动
+	toDown:false,		// 是否向下移动
+	level:0,			// 等级
+	destroyed:false,	// 是否被击毁或撞毁
+	
+	paint:function(ctx){  
+		if(this.destroyed==false){			
+			var index=this.level;
+			
+			if(index>this.types.length-1){
+				console.log("非法的本机level值="+this.level);
+				index=this.types.length-1;
+			}
+			
+			var img=new Image();
+			img.src=this.types[index].file;			
+			ctx.drawImage(img,this.x-this.types[index].width/2,this.y-this.types[index].height/2);
+
+			
+			// 标出this,x,this.y所在位置
+			//var img2=new Image();
+			//img2.src="shoot.png";
+			//ctx.drawImage(img2,this.x-5.5,this.y-5.5);
+		}
+    },
+	
+	// 得到飞机的左上角
+	getLeftUpPoint:function(){
+		var index=this.level;
+		var p=new Point(this.x-this.types[index].width/2,this.y-this.types[index].height/2);
+		return p;
+	},
+	
+	// 得到飞机的右上角
+	getRightUpPoint:function(){
+		var index=this.level;
+		var p=new Point(this.x+this.types[index].width/2,this.y-this.types[index].height/2);
+		return p;
+	},
+	
+	// 得到飞机的左下角
+	getLeftDownPoint:function(){
+		var index=this.level;
+		var p=new Point(this.x-this.types[index].width/2,this.y+this.types[index].height/2);
+		return p;
+	},
+	
+	// 得到飞机的右下角
+	getRightDownPoint:function(){
+		var index=this.level;
+		var p=new Point(this.x+this.types[index].width/2,this.y+this.types[index].height/2);
+		return p;
+	},
+	
+	move:function(){
+		// 加入边界判断 2019年3月13日19点16分
+		var type=this.types[this.level].file;
+		
+		if(this.x<0){
+			this.x=0;
+			this.toLeft=false;
+		}
+		if(this.x>ctx.canvas.width){
+			this.x=ctx.canvas.width;
+			this.toRight=false;
+		}
+		
+		if(this.y<0){
+			this.y=0;
+			this.toUp=false;
+		}
+		
+		if(this.y>ctx.canvas.height){
+			this.y=ctx.canvas.height;
+			this.toDown=false;
+		}
+		
+		// 运动
+		if(this.toLeft==true && this.destroyed==false){
+			this.x-=this.step;
+		}
+		if(this.toRight==true && this.destroyed==false){
+			this.x+=this.step;
+		}
+		if(this.toUp==true && this.destroyed==false){
+			this.y-=this.step;
+		}
+		if(this.toDown==true && this.destroyed==false){
+			this.y+=this.step;
+		}	
+    },
+	
+	//  本机开炮
+	shoot:function(){
+		if(this.destroyed==false){
+			var index=this.level;
+		
+			// 得到炮弹
+			var shellCount=this.types[index].shellCount;			
+			var shells=myShellMng.fetch(shellCount);
+			
+			// 用来控制炮弹发射位置
+			
+			var xLeft=this.x-this.types[index].width/2;
+			var offset=this.types[index].width/(shellCount+1);
+			
+			for(var i=0;i<shellCount;i++){
+				var s=shells[i];
+				
+				s.x=xLeft+(i+1)*offset;
+				s.y=this.y;
+				s.speed=this.types[index].shellSpeed;
+			}
+		}
+	},
+	
+	// 判断以x,y为坐标的点是否进入本机机四角范围内
+	isWithinLimits:function(x,y){
+		var index=this.level;
+	
+		var left=this.x-this.types[index].width/2;
+		var top=this.y-this.types[index].height/2;
+		var width=this.types[index].width;
+		var height=this.types[index].height;
+		
+		if(left<x && x<left+width && top<y && y<top+height){
+			return true;
+		}else{
+			return false;
+		}
+	},
+	
+	// 看地方炮弹是否命中本机
+	isShooted:function(shell){
+		if(shell.destroyed==true){
+			return false;
+		}
+		
+		// 如果炮弹打中本机范围
+		if(this.isWithinLimits(shell.x,shell.y)){			
+			shell.destroyed=true;
+			
+			// 被打中降一级，降到0以下爆炸
+			this.upgrade(-1);
+				
+			return true;
+		}
+		
+		return false;
+    },
+	
+	// 本机升级
+	upgrade:function(value){
+		var upgraded=this.level+value;
+		
+		upgraded=Math.min(upgraded,this.types.length-1);
+	
+		if(upgraded<0){
+			// 游戏结束
+			explosionMng.fire(this.x,this.y);
+			this.destroyed=true;
+			gameover=true;
+			restartBtn.style.visibility="visible";
+		}else{
+			this.level=upgraded;
+		}
+	},
+}
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<我方战机类定义结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>我方炮弹类定义开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+MyShell=function(x,y){
+    Point.apply(this,arguments);
+	
+	this.types=[
+		{width:11,height:11,file:'shell0.png'},
+		{width:11,height:11,file:'shell1.png'},
+		{width:11,height:11,file:'shell2.png'},
+		{width:11,height:11,file:'shell3.png'},
+		{width:11,height:11,file:'shell4.png'},
+		{width:11,height:11,file:'shell5.png'},
+		{width:11,height:11,file:'shell6.png'},
+		{width:18,height:18,file:'shell7.png'},
+	];
+	
+}
+MyShell.prototype={
+	types:[],		// 炮弹型号
+	destroyed:false,// 是否被敌机撞毁
+	visible:true,	// 是否在CTX显示范围内
+	level:3,		// 等级，用以决定炮弹型号
+	speed:4,		// 炮弹速度（己方炮弹向上飞行）
+	
+	paint:function(ctx){  
+		if(this.visible==false){
+			return;
+		}
+	
+		if(this.destroyed==false){
+			// 没被击毁显示炮弹型号
+			var img=new Image();
+			var index=this.level;			
+			img.src=this.types[index].file;			
+			ctx.drawImage(img,this.x-this.types[index].width/2,this.y-this.types[index].height/2);
+		}
+    },
+	
+	move:function(){
+		// 设置越界不可见		
+		if(this.x<0){
+			this.visible=false;
+		}
+		if(this.x>ctx.canvas.width){
+			this.visible=false;
+		}
+		
+		if(this.y<0){
+			this.visible=false;
+		}
+		
+		if(this.y>ctx.canvas.height){
+			this.visible=false;
+		}
+		
+		if(this.visible==true && this.destroyed==false){
+			this.y-=this.speed;
+		}
+    },
+}
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<我方炮弹类定义结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>我方炮弹管理者类定义开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>19.3.16
+MyShellMng=function(){
+	this.shells=new Array();
+}
+MyShellMng.prototype={
+	shells:[],		// 己方炮弹对象数组
+	
+	// 取得己方炮弹数量
+	getCount:function(){
+		return this.shells.length;
+	},
+	
+	paint:function(ctx){
+		for(var i=0;i<this.shells.length;i++){
+			var s=this.shells[i];
+			s.paint(ctx);
+		}
+	},
+	
+	// 取出子弹，count为个数
+	fetch:function(count){
+		var retval=new Array();
+		
+		//console.log("原有己方炮弹数量=",this.shells.length);
+		// 先取原有的炮弹
+		for(var i=0;i<this.shells.length;i++){
+			var s=this.shells[i];
+			
+			if(s.visible==false || s.destroyed==true){
+				s.destroyed=false;
+				s.visible=true;
+				
+				if(retval.length<count){
+					retval.push(s);
+				}
+			}
+		}
+		
+		// 不足再创建新的炮弹
+		while(retval.length<count){
+			var s=new MyShell(0,0);
+			this.shells.push(s);
+			retval.push(s);
+		}
+		
+		//console.log("现有己方炮弹数量=",this.shells.length);
+		
+		return retval;
+	},
+	
+	// 移动炮弹
+	move:function(){
+		for(var i=0;i<this.shells.length;i++){
+			var s=this.shells[i];
+			s.move();
+		}
+	},
+	
+	// 判断炮弹是否撞到敌机
+	probeCrashedEnemyPlane:function(){
+		for(var i=0;i<this.shells.length;i++){
+			var s=this.shells[i];
+			if(s.visible==true && s.destroyed==false){
+				if(enemyPlaneMng.isShooted(s)==true){
+					s.destroyed=true;
+					return;
+				}
+			}
+		}
+	},
+}
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<我方炮弹管理者类定义结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>敌方飞机类定义开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+EnemyPlane=function(x,y,level){
+    Point.apply(this,arguments);
+	this.level=level;
+
+	this.types=[
+		{width:117,height:64,file:'e0.png',shellCount:1,shootInterval:300,shellSpeed:3 ,	reciprocatingRadius:12},
+		{width:117,height:64,file:'e1.png',shellCount:2,shootInterval:270,shellSpeed:4 ,	reciprocatingRadius:8.5},
+		{width:100,height:77,file:'e2.png',shellCount:3,shootInterval:240,shellSpeed:5 ,	reciprocatingRadius:6.5},
+		{width:117,height:85,file:'e3.png',shellCount:4,shootInterval:210,shellSpeed:6 ,	reciprocatingRadius:3},
+		{width:117,height:86,file:'e4.png',shellCount:5,shootInterval:180,shellSpeed:7 ,	reciprocatingRadius:4.5},
+		{width:117,height:93,file:'e5.png',shellCount:6,shootInterval:150,shellSpeed:8 ,	reciprocatingRadius:5.25},
+		{width:117,height:93,file:'e6.png',shellCount:6,shootInterval:120,shellSpeed:9 ,	reciprocatingRadius:6},
+		{width:117,height:96,file:'e7.png',shellCount:7,shootInterval:90, shellSpeed:11 ,	reciprocatingRadius:8.75},
+		{width:117,height:99,file:'e8.png',shellCount:8,shootInterval:60 ,shellSpeed:12,	reciprocatingRadius:9.5},
+	];
+}
+EnemyPlane.prototype={
+	types:[],			// 飞机型号数组
+	destroyed:false,	// 是否被击毁
+	level:7,			// 等级，用此取飞机型号
+	visible:true,		// 是否在ctx显示范围内
+	speed:2,			// 敌机向下飞行的速度
+	
+	paint:function(ctx){  
+		// 不可见则不显示
+		if(this.visible==false){
+			return;
+		}
+	
+		if(this.destroyed==false){
+			// 没被击毁显示飞机型号
+			var img=new Image();
+			var index=this.level;
+			
+			// 越界时报错一下并取最后一张
+			if(index>this.types.length-1){
+				console.log("非法的敌机level值="+this.level);
+				index=this.types.length-1;
+			}
+			
+			img.src=this.types[index].file;			
+			ctx.drawImage(img,this.x-this.types[index].width/2,this.y-this.types[index].height/2);
+			
+			// 标出本机下x,y坐标
+			//var img2=new Image();
+			//img2.src="shoot.png";
+			//ctx.drawImage(img2,this.x-5.5,this.y-5.5);
+		}
+    },
+	
+	// 判断以x,y为坐标的点是否进入敌机四角范围内
+	isWithinLimits:function(x,y){
+		var index=this.level;
+	
+		var left=this.x-this.types[index].width/2;
+		var top=this.y-this.types[index].height/2;
+		var width=this.types[index].width;
+		var height=this.types[index].height;
+		
+		if(left<x && x<left+width && top<y && y<top+height){						
+			return true;
+		}else{
+			return false;
+		}
+	},
+	
+	// 敌机飞行
+	move:function(){
+		// 设置越界不可见		
+		/*if(this.x<0){
+			this.visible=false;
+		}
+		if(this.x>ctx.canvas.width){
+			this.visible=false;
+		}
+		
+		if(this.y<0){
+			this.visible=false;
+		}*/
+		
+		if(this.y>ctx.canvas.height){
+			this.visible=false;
+		}
+		
+		if(this.visible){
+			var index=this.level;
+		
+			this.y+=this.speed;
+			this.x+=this.types[index].reciprocatingRadius*Math.sin(getRad(this.y));
+			
+			//  行动中随机开枪
+			var rnd=this.getRndBetween(0,this.types[index].shootInterval);// 上限越大打得越慢，这个值可以叫ShootInterval
+			if(rnd<1){
+				this.shoot();
+			}
+		}
+    },
+	
+	// 得到随机数
+	getRndBetween:function (lowerLimit,upperLimit){
+		return Math.floor(Math.random()*(upperLimit-lowerLimit+1))+lowerLimit;
+	},
+	
+	//  敌机开炮
+	shoot:function(){
+		if(this.destroyed==false){
+			var index=this.level;
+		
+			// 得到炮弹
+			var shellCount=this.types[index].shellCount;
+			var shells=enemyShellMng.fetch(shellCount);
+			
+			// 用来控制炮弹发射位置，从左翼尖到右翼尖均匀排列			
+			var xLeft=this.x-this.types[index].width/2;
+			var offset=this.types[index].width/(shellCount+1);
+			
+			for(var i=0;i<shellCount;i++){
+				var s=shells[i];
+				
+				s.x=xLeft+(i+1)*offset;
+				s.y=this.y;
+				s.speedY=this.types[index].shellSpeed;
+				s.speedX=this.getRndBetween(-4,4);
+			}
+		}
+	},
+}
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<敌方飞机类定义结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>敌方飞机管理类定义开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+EnemyPlaneMng=function(x,y){
+    Point.apply(this,arguments);
+	
+	this.planes=new Array();
+	this.planes.push(new EnemyPlane(ctx.canvas.width/2,20,0));
+	this.planes.push(new EnemyPlane(ctx.canvas.width/2-80,20,1));
+	this.planes.push(new EnemyPlane(ctx.canvas.width/2+80,20,3));
+}
+EnemyPlaneMng.prototype={
+	planes:[],
+	
+	// 取得敌机数量
+	getCount:function(){
+		return this.planes.length;
+	},
+	
+	// 得到lowerLimit到upperlimit（包括端点值）的随机整数
+	getRndBetween:function (lowerLimit,upperLimit){
+		return Math.floor(Math.random()*(upperLimit-lowerLimit+1))+lowerLimit;
+	},
+	
+	// 重新装载飞机
+	reload:function(){
+		var count=this.getAlivePlaneCount();
+	
+		if(count==0){
+			// 取得数组长度
+			var n=this.planes.length-1;
+			// 一回搞三架敌机出来，控制数量就是控制数组个数
+			var arr2=[this.getRndBetween(0,n),this.getRndBetween(0,n),this.getRndBetween(0,n)];
+			
+			for(var i=0;i<arr2.length;i++){
+				var index=arr2[i];
+				
+				var plane=this.planes[index];
+				plane.visible=true;
+				plane.destroyed=false;
+				
+				var arr=[ctx.canvas.width/4,ctx.canvas.width*3/4];
+				plane.x=arr[this.getRndBetween(0,1)];
+				
+				plane.y=this.getRndBetween(10,40);
+				plane.level=this.getRndBetween(0,plane.types.length-1);
+			}
+		}
+	},
+	
+	// 得到屏幕上飞机活着的飞机数目
+	getAlivePlaneCount:function(){
+		var retval=0;
+		for(var i=0;i<this.planes.length;i++){
+			var plane=this.planes[i];
+			if(plane.visible==true && plane.destroyed==false){
+				retval++;
+			}
+		}
+		
+		return retval;
+	},
+	
+	paint:function(ctx){                
+		for(var i=0;i<this.planes.length;i++){
+			var plane=this.planes[i];
+			plane.paint(ctx);
+		}
+    },
+	
+	move:function(){
+		for(var i=0;i<this.planes.length;i++){
+			var plane=this.planes[i];
+			plane.move();
+		}
+    },
+	
+	isShooted:function(shell){
+		if(shell.destroyed==true){
+			return false;
+		}
+		
+		for(var i=0;i<this.planes.length;i++){
+			var plane=this.planes[i];
+			
+			if(plane.visible==true && plane.destroyed==false){
+
+				if(plane.isWithinLimits(shell.x,shell.y)){
+					plane.destroyed=true;
+					shell.destroyed=true;
+					
+					// 击落数加一
+					shootDownCnt++;
+					
+					// 制造爆炸
+					explosionMng.fire(shell.x,shell.y);
+					
+					// 制造奖励
+					var b=bonusMng.fetchOne();
+					b.x=shell.x;
+					b.y=shell.y;
+			
+					// 敌机重载
+					enemyPlaneMng.reload();
+			
+					return true;
+				}
+			}			
+		}
+		
+		return false;
+    },
+	
+	// 看主角飞机是否与敌机相撞
+	isCrashed:function(rolePlane){
+		if(rolePlane.destroyed==true){
+			return false;
+		}
+		
+		// 得到本机四角坐标
+		var p1=rolePlane.getLeftUpPoint();
+		var p2=rolePlane.getRightUpPoint();
+		var p3=rolePlane.getLeftDownPoint();
+		var p4=rolePlane.getRightDownPoint();
+		
+		for(var i=0;i<this.planes.length;i++){
+			var ep=this.planes[i];
+			
+			if(ep.visible==true && ep.destroyed==false){
+			
+				if(ep.isWithinLimits(p1.x,p1.y) || ep.isWithinLimits(p2.x,p2.y) || ep.isWithinLimits(p3.x,p3.y) || ep.isWithinLimits(p4.x,p4.y)){
+	
+					ep.destroyed=true;// 敌机撞毁
+					explosionMng.fire(ep.x,ep.y);// 制造爆炸
+					
+					rolePlane.destroyed=true;// 本机撞毁
+					explosionMng.fire(rolePlane.x,rolePlane.y);// 制造爆炸
+					
+					// 游戏结束
+					gameover=true;
+					restartBtn.style.visibility="visible";
+					
+					return true;
+				}
+			}			
+		}
+	
+		return false;
+	},
+}
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<敌方飞机管理类定义结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>爆炸类定义开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+Explosion=function(x,y){
+	Point.apply(this,arguments);
+	
+	this.types=[
+		{width:105,height:100,file:'explosion0.png'},
+		{width:105,height:100,file:'explosion1.png'},
+		{width:105,height:100,file:'explosion2.png'},
+		{width:105,height:100,file:'explosion3.png'},
+		{width:105,height:100,file:'explosion4.png'},
+		{width:105,height:100,file:'explosion5.png'},
+	];
+}
+Explosion.prototype={
+   	types:[],		// 爆炸图片
+	destroyTime:0,	// 被摧毁时间
+	
+	paint:function(ctx){
+		var index=Math.floor(this.destroyTime);
+		
+		if(index<this.types.length){
+			this.destroyTime+=0.05;
+			var img=new Image();			
+			img.src=this.types[index].file;			
+			ctx.drawImage(img,this.x-this.types[index].width/2,this.y-this.types[index].height/2);
+		}
+	},
+	
+	// 看这个爆炸对象是否使用过
+	isUsed:function(){
+		return this.destroyTime>=this.types.length;
+	},
+}
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<爆炸类定义结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>爆炸类2定义开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+Explosion2=function(x,y){
+	Point.apply(this,arguments);
+	
+	this.types=[
+		{width:98,height:100,file:'b0.png'},
+		{width:98,height:100,file:'b1.png'},
+		{width:98,height:100,file:'b2.png'},
+		{width:98,height:100,file:'b3.png'},
+		{width:98,height:100,file:'b4.png'},
+		{width:98,height:100,file:'b5.png'},
+		{width:98,height:100,file:'b6.png'},
+		{width:98,height:100,file:'b7.png'},
+	];
+}
+Explosion2.prototype={
+   	types:[],		// 爆炸图片
+	destroyTime:0,	// 被摧毁时间
+	
+	paint:function(ctx){
+		var index=Math.floor(this.destroyTime);
+		
+		if(index<this.types.length){
+			this.destroyTime+=0.05;
+			var img=new Image();			
+			img.src=this.types[index].file;			
+			ctx.drawImage(img,this.x-this.types[index].width/2,this.y-this.types[index].height/2);
+		}
+	},
+	
+	// 看这个爆炸对象是否使用过
+	isUsed:function(){
+		return this.destroyTime>=this.types.length;
+	},
+}
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<爆炸类2定义结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>爆炸管理类定义开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ExplosionMng=function(x,y){
+	this.exps=new Array();
+}
+ExplosionMng.prototype={
+   	exps:[],		// 爆炸数组
+	
+	// 取得爆炸数量
+	getCount:function(){
+		return this.exps.length;
+	},
+	
+	paint:function(ctx){
+		for(var i=0;i<this.exps.length;i++){
+			var e=this.exps[i];
+			e.paint(ctx);
+		}
+	},
+	
+	// 得到随机数
+	getRndBetween:function (lowerLimit,upperLimit){
+		return Math.floor(Math.random()*(upperLimit-lowerLimit+1))+lowerLimit;
+	},
+	
+	// 制作一次爆炸，使用这种方式，可最大程度利用现有对象，而不是创建一堆用不上的变量
+	fire:function(x,y){
+		var exp=null;
+		
+		for(var i=0;i<this.exps.length;i++){
+			var e=this.exps[i];
+			console.log('e.isUsed=',e.isUsed())
+			
+			if(e.isUsed()==true){
+				exp=e;
+				exp.x=x;
+				exp.y=y;
+				exp.destroyTime=0;
+				console.log('使用一个原有对象',exp)
+				break;
+			}
+		}
+		
+		if(exp==null){
+			var seed=this.getRndBetween(0,1);
+			
+			if(seed==0){
+				exp=new Explosion(x,y);
+			}else{
+				exp=new Explosion2(x,y);
+			}		
+			
+			this.exps.push(exp);
+			console.log('创建一个新对象',exp)
+		}
+		
+		console.log('爆炸对象个数=',this.exps.length)
+	},
+}
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<爆炸管理类定义结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>敌方炮弹类定义开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> 19.3.16
+EnemyShell=function(x,y){
+    Point.apply(this,arguments);
+	
+	this.types=[
+		{width:11,height:11,file:'shell0.png'},
+		{width:11,height:11,file:'shell1.png'},
+		{width:11,height:11,file:'shell2.png'},
+		{width:11,height:11,file:'shell3.png'},
+		{width:11,height:11,file:'shell4.png'},
+		{width:11,height:11,file:'shell5.png'},
+		{width:11,height:11,file:'shell6.png'},
+		{width:18,height:18,file:'shell7.png'},
+	];
+	
+}
+EnemyShell.prototype={
+	types:[],		// 炮弹型号
+	destroyed:false,// 是否被敌机撞毁
+	visible:true,	// 是否在CTX显示范围内
+	level:0,		// 等级，用以决定炮弹型号
+	speedY:4,		// 炮弹纵向速度（敌方炮弹斜向下飞行）
+	speedX:4,		// 炮弹横向速度（敌方炮弹斜向下飞行）增加此举是为了防止居中火力全开模式
+	
+	paint:function(ctx){  
+		if(this.visible==false){
+			return;
+		}
+	
+		if(this.destroyed==false){
+			// 没被击毁显示炮弹型号
+			var img=new Image();
+			var index=this.level;			
+			img.src=this.types[index].file;			
+			ctx.drawImage(img,this.x-this.types[index].width/2,this.y-this.types[index].height/2);
+		}
+    },
+	
+	move:function(){
+		// 设置越界不可见		
+		if(this.x<0){
+			this.visible=false;
+		}
+		if(this.x>ctx.canvas.width){
+			this.visible=false;
+		}
+		
+		if(this.y<0){
+			this.visible=false;
+		}
+		
+		if(this.y>ctx.canvas.height){
+			this.visible=false;
+		}
+		
+		if(this.visible==true && this.destroyed==false){
+			this.y+=this.speedY;
+			this.x+=this.speedX;
+		}
+    },
+}
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<敌方炮弹类定义结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>敌方炮弹管理者类定义开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>19.3.16
+EnemyShellMng=function(){
+	this.shells=new Array();
+}
+EnemyShellMng.prototype={
+	shells:[],		// 敌方炮弹对象数组	
+	
+	// 取得敌方炮弹数量
+	getCount:function(){
+		return this.shells.length;
+	},
+	
+	paint:function(ctx){
+		for(var i=0;i<this.shells.length;i++){
+			var s=this.shells[i];
+			s.paint(ctx);
+		}
+	},
+	
+	// 取出子弹，count为个数
+	fetch:function(count){
+		var retval=new Array();
+		
+		//console.log("原有敌方炮弹数量=",this.shells.length);
+		// 先取原有的炮弹
+		for(var i=0;i<this.shells.length;i++){
+			var s=this.shells[i];
+			
+			if(s.visible==false || s.destroyed==true){
+				s.destroyed=false;
+				s.visible=true;
+				
+				if(retval.length<count){
+					retval.push(s);
+				}
+			}
+		}
+		
+		// 不足再创建新的炮弹
+		while(retval.length<count){
+			var s=new EnemyShell(0,0);
+			this.shells.push(s);
+			retval.push(s);
+		}
+		
+		//console.log("现有敌方炮弹数量=",this.shells.length);
+		
+		return retval;
+	},
+	
+	// 移动炮弹
+	move:function(){
+		for(var i=0;i<this.shells.length;i++){
+			var s=this.shells[i];
+			s.move();
+		}
+	},
+	
+	// 判断炮弹是否撞到本机
+	probeCrashedMyPlane:function(){
+		for(var i=0;i<this.shells.length;i++){
+			var s=this.shells[i];
+			if(s.visible==true && s.destroyed==false && myPlane.destroyed==false){
+			
+				if(myPlane.isShooted(s)==true){
+					s.destroyed=true;
+					return;
+				}
+			}
+		}
+	},
+}
+//<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<敌方炮弹管理者类定义结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+//---------------------------------------------------奖励类定义开始------------------------------------------------------------------->>
+Bonus=function(x,y){
+	this.x=x;
+	this.y=y;
+	this.files=['bonus0.png','bonus1.png'];
+}
+Bonus.prototype={
+	x:0,			// 横坐标
+	y:0,			// 纵坐标
+	files:[],		// 图片
+	used:false,		// 是否使用过
+	index:0,		// 作为两张图片交替显示的取舍
+	
+	paint:function(ctx){
+		if(this.used==false){
+		
+			var img=new Image();
+			img.src=this.files[0];
+			
+			this.index++;
+			if(this.index>199){
+				this.index=0;
+				this.used=true;
+			}
+			
+			if(this.index<100){
+				img.src=this.files[1];
+			}else{
+				img.src=this.files[0];
+			}
+					
+			ctx.drawImage(img,this.x,this.y);
+		}
+	},
+	
+	// 奖励得向下落，要不不好接
+	move:function(){
+		if(this.y<ctx.canvas.height){
+			this.y+=3;
+		}else{
+			this.used=true;
+		}
+	},
+}
+//---------------------------------------------------奖励类定义结束-------------------------------------------------------------------<<
+
+//---------------------------------------------------奖励管理类定义开始------------------------------------------------------------------->>
+BonusMng=function(x,y){
+	this.bonusArr=new Array();
+}
+BonusMng.prototype={
+	bonusArr:[],		// 奖励数组
+	
+	// 取得奖励数量
+	getCount:function(){
+		return this.bonusArr.length;
+	},
+	
+	move:function(){
+		for(var i=0;i<this.bonusArr.length;i++){
+			var b=this.bonusArr[i];
+			b.move();
+		}
+	},
+
+	paint:function(ctx){
+		for(var i=0;i<this.bonusArr.length;i++){
+			var b=this.bonusArr[i];
+			b.paint(ctx);
+		}
+	},
+	
+	// 取出一个Bonus
+	fetchOne:function(){
+		// 先取原有的
+		for(var i=0;i<this.bonusArr.length;i++){
+			var b=this.bonusArr[i];
+			
+			if(b.used==true){
+				b.used=false;
+				return b;
+			}
+		}
+		
+		// 原来的没有就新建一个
+		var b=new Bonus(0,0);
+		this.bonusArr.push(b);
+		return b;
+	},
+	
+	// 看奖励是否与本机相撞
+	isCrashed:function(rolePlane){
+		if(rolePlane.destroyed==true){
+			return false;
+		}
+		
+		// 得到本机四角坐标
+		for(var i=0;i<this.bonusArr.length;i++){
+			var b=this.bonusArr[i];
+			
+			if(b.used==false && rolePlane.isWithinLimits(b.x,b.y)==true){
+				//console.log("升级");
+				
+				rolePlane.upgrade(1);
+				b.used=true;
+				
+				return true;
+			}
+		}
+	
+		return false;
+	},
+}
+//---------------------------------------------------奖励管理类定义结束-------------------------------------------------------------------<<
+//-->
+</script>
